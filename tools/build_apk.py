@@ -16,7 +16,13 @@ from cryptography.hazmat.primitives import serialization
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEYS = os.path.join(HERE, "keys")
-BUILD_TOOLS = os.environ.get("ANDROID_BUILD_TOOLS", r"D:\AndroidSDK\build-tools\34.0.0")
+_sdk_home = os.environ.get("ANDROID_HOME", r"C:\Users\Youssef\Downloads\PC\AndroidSdk\AndroidSdk")
+BUILD_TOOLS = os.environ.get("ANDROID_BUILD_TOOLS", os.path.join(_sdk_home, "build-tools", "34.0.0"))
+
+JAVA_BIN = r"C:\Users\Youssef\Downloads\PC\AndroidSdk\java\jdk-21\bin"
+if os.path.isdir(JAVA_BIN) and JAVA_BIN not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = JAVA_BIN + os.pathsep + os.environ.get("PATH", "")
+    os.environ["JAVA_HOME"] = os.path.dirname(JAVA_BIN)
 DATS = ("assets/ConquerRes/server_local.dat", "assets/ConquerRes/server_world.dat")
 RECOMMEND = "assets/ConquerRes/ini/recommend.ini"
 RECOMMEND_OURS = b"[recommend]\r\ncount=1\r\n\r\n[server_0]\r\ngroup=0\r\nindex=0\r\nflag=0\r\n"

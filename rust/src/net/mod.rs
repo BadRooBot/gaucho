@@ -205,6 +205,17 @@ pub async fn http(listener: TcpListener, world: UnboundedSender<Ev>) {
                         Err(_) => "err Server busy".into(),
                     }
                 }
+                // Localhost test hook for terminals where the emulator IME crashes.
+                // Enable with CQ2_GM_HTTP=1 and call /gm?cmd=/cps+100000
+                "gm" if std::env::var("CQ2_GM_HTTP").is_ok() && addr.ip().is_loopback() => {
+                    let cmd = unescape(query(q, "cmd"));
+                    if cmd.starts_with('/') {
+                        let _ = world.send(Ev::Command { text: cmd });
+                        "ok".into()
+                    } else {
+                        "err cmd must start with /".into()
+                    }
+                }
                 _ => return println!("[HTTP] {addr} {}", req.lines().next().unwrap_or("")),
             };
             let head = format!(

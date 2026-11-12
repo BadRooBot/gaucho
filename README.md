@@ -21,6 +21,7 @@ update of my march/april version.
 ```
 run_server.bat [ip]
 ```
+adb reverse tcp:8020 tcp:8020; adb reverse tcp:5816 tcp:5816; adb reverse tcp:9528 tcp:9528; adb reverse --list
 
 ports 8020 auth, 5816 game, 9528 login. env: `CQ2_BIND_HOST`, `CQ2_DATA`, `CQ2_TRACE=1`, `CQ2_GM`.
 
@@ -39,4 +40,7 @@ todo: parties, no-pk maps, npc dialogs outside quests, instances.
 
 ## commands
 
-gm: `/level` `/tp` `/quest` `/title` `/ride` `/guild` `/money` `/item` `/heal` `/new` `/who`. everyone: `/characters` `/switch`.
+gm: `/level` `/tp` `/quest` `/title` `/ride` `/guild` `/money` `/cps` `/item` `/heal` `/new` `/who`. everyone: `/characters` `/switch`.
+
+`/cps N` sets the premium currency (CPS / EMoney). If the emulator's text input crashes, `run_server.bat`
+also enables a localhost hook: `curl "http://127.0.0.1:9528/gm?cmd=/cps+100000"`.

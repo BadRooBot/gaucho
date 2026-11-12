@@ -49,6 +49,9 @@ pub struct Hero {
     pub last_login: u64,
     pub download_reward: bool,
     pub mail_claimed: bool,
+    pub lineage_profs: Vec<LineageProf>,
+    pub lineage_xuemai: u32,
+    pub lineage_guide: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -68,6 +71,17 @@ pub struct Skill {
     pub typ: u32,
     pub level: u16,
     pub exp: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LineageProf {
+    /// Class code: 1=Trojan,2=Warrior,4=Archer,5=Ninja,6=Monk,7=Pirate,
+    /// 8=DragonWarrior,9=Thunderstriker,13=WaterTao,14=FireTao,16=Windwalker
+    pub prof_sort: u32,
+    pub level: u32,
+    pub exp: u32,
+    pub prob: u32,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -269,6 +283,12 @@ impl Hero {
         up
     }
 
+    /// Sets the premium currency (CPS / EMoney) shown and spent by the client.
+    pub fn set_cps(&mut self, cps: u32) -> u32 {
+        self.emoney = cps;
+        self.emoney
+    }
+
     pub fn userinfo(&self, base: &[u8]) -> Vec<u8> {
         let mut b = base.get(..0xa4).map_or_else(|| vec![0; 0xa4], <[u8]>::to_vec);
         put(&mut b, 0x00, &self.id.to_le_bytes());
@@ -385,6 +405,7 @@ mod tests {
         assert_eq!((h.max_hp(&c), h.max_mp(&c), h.attack(&c).0), (2093, 0, 55));
         assert!(h.gain_exp(h.exp_to_next(), &c));
         assert_eq!((h.level, h.max_hp(&c)), (2, 2123));
+        assert_eq!((h.set_cps(12345), h.emoney), (12345, 12345));
         let mut s = Store::load(Path::new("nonexistent.json"));
         s.put("k", &h);
         h.ip = "1.2.3.4".into();

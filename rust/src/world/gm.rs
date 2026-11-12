@@ -6,7 +6,7 @@
 
 use super::*;
 
-const HELP: &str = "/level N | /tp map x y | /quest id | /title id | /ride | /guild create|join|leave N | /money N | /item type [n] [dur] | /heal | /new [ip] | /who";
+const HELP: &str = "/level N | /tp map x y | /quest id | /title id | /ride | /guild create|join|leave N | /money N | /item type [n] [dur] | /heal | /new [ip] | /who | /lineage_show | /forge_show";
 
 impl World {
     pub(super) fn command(&mut self, cid: u64, text: &str) -> bool {
@@ -70,6 +70,31 @@ impl World {
             "who" => self.players.values().filter(|p| p.h.id != 0)
                 .map(|p| format!("{} lv{} {}({},{})", p.h.name, p.h.level, p.h.map, p.h.x, p.h.y))
                 .collect::<Vec<_>>().join(" | "),
+            "lineage_show" => {
+                if self.players[&cid].h.level < 140 {
+                    self.gm_level(cid, 140);
+                }
+                self.lineage_ensure(cid);
+                self.send_lineage(cid);
+                self.login_server_over(cid);
+                self.forge_open_flag(cid, 0x1ff);
+                self.send_lineage_refresh(cid);
+                "lineage_show: Character level set to 140, Forge & Lineage unlocked and HUD refreshed".into()
+            }
+            "forge_show" => {
+                if self.players[&cid].h.level < 30 {
+                    self.gm_level(cid, 30);
+                }
+                self.login_server_over(cid);
+                self.forge_open(cid);
+                self.send_lineage_refresh(cid);
+                "forge_show: Character level set to >= 30, Forge unlocked and HUD refreshed".into()
+            }
+            "fsetflag" => {
+                let v = arg(0) as u64;
+                self.forge_open_flag(cid, v);
+                format!("fsetflag 0x{v:x} (SetFunctionFlag -> ProcessFuncStatus re-eval)")
+            }
             _ => HELP.into(),
         };
         self.send(cid, 0x27c3, &talk(2005, &reply));

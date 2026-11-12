@@ -248,8 +248,10 @@ mod tests {
             tx: tokio::sync::mpsc::unbounded_channel().0, addr: "127.0.0.1:1".parse().unwrap(),
             h: Hero { guild, pk, ..Default::default() }, key: String::new(), pending: None, dir: 0, alive: true,
             revive_at: None, entered: true, ready: true, seen: HashSet::new(), last_attack: now, last_mbtick: now,
-            quest_timer: None, cine: None, res: 0, cooldown: HashMap::new(), stamina: 0, pk_mode: mode, flash: None,
+            quest_timer: None, forge_retry: None, cine: None, res: 0, cooldown: HashMap::new(), stamina: 0,
+            pk_mode: mode, flash: None,
             pk_decay: now, friend_req: HashSet::new(), trade_req: HashSet::new(), trade: None,
+            last_npc: 0, dialog_menu: 0,
         }
     }
 

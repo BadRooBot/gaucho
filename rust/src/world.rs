@@ -11,15 +11,38 @@ use crate::proto::{Msg, Pb};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::UnboundedReceiver;
 
+fn opcode_names() -> &'static HashMap<u16, String> {
+    static M: OnceLock<HashMap<u16, String>> = OnceLock::new();
+    M.get_or_init(|| {
+        let mut map = HashMap::new();
+        for line in include_str!("../../data/packets.txt").lines() {
+            let mut parts = line.split_whitespace();
+            if let (Some(id), Some(name)) = (parts.next(), parts.next()) {
+                if let Ok(id) = id.parse::<u16>() {
+                    map.insert(id, name.to_string());
+                }
+            }
+        }
+        map
+    })
+}
+
+pub(crate) fn opcode_name(ty: u16) -> String {
+    opcode_names().get(&ty).cloned().unwrap_or_default()
+}
+
 mod account;
 mod combat;
+mod forge;
 mod friend;
 mod gm;
 mod ground;
 mod item;
+mod lineage;
 mod mail;
 mod mobs;
 mod movement;
@@ -52,6 +75,8 @@ pub enum Ev {
     Packet { cid: u64, ty: u16, body: Vec<u8> },
     Leave { cid: u64 },
     Sdk { ip: String, account: String, pass: String, register: bool, reply: tokio::sync::oneshot::Sender<Result<SdkLogin, &'static str>> },
+    /// Runs a GM slash command as the first online player (see `net::http` `/gm?cmd=`).
+    Command { text: String },
 }
 
 struct Player {
@@ -69,6 +94,7 @@ struct Player {
     last_attack: Instant,
     last_mbtick: Instant,
     quest_timer: Option<Instant>,
+    forge_retry: Option<(Instant, u8)>,
     cine: Option<(u64, u32, Instant)>,
     res: u32,
     cooldown: HashMap<u32, Instant>,
@@ -79,6 +105,8 @@ struct Player {
     friend_req: HashSet<u32>,
     trade_req: HashSet<u32>,
     trade: Option<trade::Trade>,
+    last_npc: u32,
+    dialog_menu: u32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -223,8 +251,12 @@ fn talk(channel: u64, text: &str) -> Vec<u8> {
 fn walk(id: u32, dir: u8) -> Vec<u8> {
     Pb::new().v(1, dir as u64).v(2, id as u64).v(3, 1).v(4, ms()).out()
 }
-fn dialog(opt: u8, kind: u8, text: &str) -> Vec<u8> {
-    let mut b = vec![0, 0, 0, 0, 0, 0, opt, kind];
+pub(crate) fn dialog_full(param: u32, avatar: u16, opt: u8, kind: u8, text: &str) -> Vec<u8> {
+    let mut b = Vec::with_capacity(16 + text.len());
+    b.extend_from_slice(&param.to_le_bytes());
+    b.extend_from_slice(&avatar.to_le_bytes());
+    b.push(opt);
+    b.push(kind);
     if text.is_empty() {
         b.push(0);
     } else {
@@ -234,6 +266,9 @@ fn dialog(opt: u8, kind: u8, text: &str) -> Vec<u8> {
     }
     b.extend_from_slice(&[0, 0, 0]);
     b
+}
+fn dialog(opt: u8, kind: u8, text: &str) -> Vec<u8> {
+    dialog_full(0, 0, opt, kind, text)
 }
 
 impl World {
@@ -296,6 +331,11 @@ impl World {
                     Some(Ev::Sdk { ip, account, pass, register, reply }) => {
                         let _ = reply.send(self.sdk(ip, &account, &pass, register));
                     }
+                    Some(Ev::Command { text }) => {
+                        if let Some(cid) = self.players.iter().find(|(_, p)| p.h.id != 0).map(|(&cid, _)| cid) {
+                            self.command(cid, text.trim());
+                        }
+                    }
                     None => break,
                 },
                 _ = tick.tick() => self.tick(),
@@ -356,9 +396,12 @@ impl World {
             0x2849 => self.title_storage(cid, &body),
             0x27b7 => self.syndicate(cid, &body),
             0x2734 => self.mb_name(cid, &body),
+            0x2753 | 0x2767 | 0x2790 | 0x27ea | 0x2802 | 0x281a | 0x2832 | 0x2840 | 0x284f | 0x2872 | 0x28a9 => self.forge_ack(cid, ty, &body),
+            0x2834 => self.forge_data_array(cid, &body),
             0x279b => self.friend(cid, &body),
             0x2787 => self.trade(cid, &body),
             0x28a2 => self.syndicate_list(cid, &body),
+            0x28a1 => self.on_lineage(cid, &body),
             t if ECHO_BODY.contains(&t) => self.send(cid, t, &body),
             0x2801 => self.send(cid, 0x041f, &Pb::new().v(1, 0).out()),
             0x041c => {
@@ -371,7 +414,10 @@ impl World {
             0x07e4 | 0x278a | 0x27d9 | 0x0833 | 0x0939 => {}
             t if ECHO_EMPTY.contains(&t) => self.send(cid, t, &[]),
             t if self.canned(cid, t, &body) => {}
-            _ => println!("[GAME {cid}] unhandled 0x{ty:04x} {}", body.iter().take(32).map(|b| format!("{b:02x}")).collect::<String>()),
+            _ => {
+                let name = opcode_name(ty);
+                println!("[GAME {cid}] unhandled 0x{ty:04x} {name} {}", body.iter().take(32).map(|b| format!("{b:02x}")).collect::<String>())
+            }
         }
     }
 

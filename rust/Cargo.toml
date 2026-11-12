@@ -8,10 +8,19 @@
 name = "gaucho-server"
 version = "0.1.0"
 edition = "2021"
+default-run = "gaucho-server"
+
+[lib]
+name = "gaucho_server"
+path = "src/lib.rs"
 
 [[bin]]
 name = "gaucho-server"
 path = "src/main.rs"
+
+[[bin]]
+name = "gaucho-proxy"
+path = "src/bin/proxy.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }

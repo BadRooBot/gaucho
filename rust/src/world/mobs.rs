@@ -30,6 +30,7 @@ impl World {
             self.revive(cid);
         }
         self.quest_tick(now);
+        self.forge_tick(now);
         self.ground_tick(now);
         if now.duration_since(self.last_save) >= Duration::from_secs(30) {
             self.last_save = now;

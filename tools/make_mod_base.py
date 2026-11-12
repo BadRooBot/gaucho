@@ -15,12 +15,30 @@ import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-APKTOOL = os.environ.get("APKTOOL", os.path.join(HERE, "apktool.jar"))
-BUILD_TOOLS = os.environ.get("ANDROID_BUILD_TOOLS", r"D:\AndroidSDK\build-tools\34.0.0")
-OBJDUMP = os.environ.get("OBJDUMP", r"C:\Program Files\LLVM\bin\llvm-objdump.exe")
-ANDROID_JAR = os.environ.get("ANDROID_JAR", r"D:\AndroidSDK\platforms\android-34\android.jar")
+_sdk_home = os.environ.get("ANDROID_HOME", r"C:\Users\Youssef\Downloads\PC\AndroidSdk\AndroidSdk")
+
+JAVA_BIN = r"C:\Users\Youssef\Downloads\PC\AndroidSdk\java\jdk-21\bin"
+if os.path.isdir(JAVA_BIN) and JAVA_BIN not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = JAVA_BIN + os.pathsep + os.environ.get("PATH", "")
+    os.environ["JAVA_HOME"] = os.path.dirname(JAVA_BIN)
+
+DEFAULT_APKTOOL = r"E:\CODE\Reverse Engineer Anything\toolse\apktool_3.0.3.jar"
+APKTOOL = os.environ.get("APKTOOL", DEFAULT_APKTOOL if os.path.isfile(DEFAULT_APKTOOL) else os.path.join(HERE, "apktool.jar"))
+
+DEFAULT_BUILD_TOOLS = os.path.join(_sdk_home, "build-tools", "34.0.0") if os.path.isdir(os.path.join(_sdk_home, "build-tools", "34.0.0")) else r"D:\AndroidSDK\build-tools\34.0.0"
+BUILD_TOOLS = os.environ.get("ANDROID_BUILD_TOOLS", DEFAULT_BUILD_TOOLS)
+
+DEFAULT_OBJDUMP = os.path.join(_sdk_home, r"ndk\27.0.12077973\toolchains\llvm\prebuilt\windows-x86_64\bin\llvm-objdump.exe")
+OBJDUMP = os.environ.get("OBJDUMP", DEFAULT_OBJDUMP if os.path.isfile(DEFAULT_OBJDUMP) else r"C:\Program Files\LLVM\bin\llvm-objdump.exe")
+
+DEFAULT_ANDROID_JAR = os.path.join(_sdk_home, "platforms", "android-34", "android.jar")
+ANDROID_JAR = os.environ.get("ANDROID_JAR", DEFAULT_ANDROID_JAR if os.path.isfile(DEFAULT_ANDROID_JAR) else r"D:\AndroidSDK\platforms\android-34\android.jar")
+
 OG_PACKAGE, PACKAGE, LABEL = "com.Tq.CQ2ClientAndroid", "com.gaucho.game", "Gaucho"
-LIB = os.path.join("lib", "arm64-v8a", "libCQ2ClientEn.so")
+LIB_PATHS = {
+    "arm64-v8a": os.path.join("lib", "arm64-v8a", "libCQ2ClientEn.so"),
+    "armeabi-v7a": os.path.join("lib", "armeabi-v7a", "libCQ2ClientEn.so"),
+}
 ADAPTER = os.path.join(HERE, "mod", "channel_adapter.smali")
 LOGIN_JAVA = os.path.join(HERE, "mod", "AccountLogin.java")
 SERVER_LIST = "server_world"
@@ -140,7 +158,7 @@ def our_modulus():
     return ("00" + format(key.public_key().public_numbers().n, "x").rjust(512, "0")).encode()
 
 
-def no_update_patch(lib, data):
+def no_update_patch_arm64(lib, data):
     dis = subprocess.run([OBJDUMP, "-d", "--disassemble-symbols=_ZN15CFDlgAutoUpdate10WindowProcEjjl", lib],
                          capture_output=True, text=True, check=True).stdout
     plt = subprocess.run([OBJDUMP, "-d", "-j", ".plt", lib], capture_output=True, text=True, check=True).stdout
@@ -153,9 +171,31 @@ def no_update_patch(lib, data):
             bl = 0x94000000 | (((post - (start + 8)) // 4) & 0x3ffffff)
             br = 0x14000000 | (((exit_ - (start + 12)) // 4) & 0x3ffffff)
             data[start:start + 16] = struct.pack("<4I", 0x5281FFE0, 0x52800041, bl, br)
-            print(f"no-update patch at {start:#x} (PostCmd@plt {post:#x}, exit {exit_:#x})")
+            print(f"no-update patch (arm64) at {start:#x} (PostCmd@plt {post:#x}, exit {exit_:#x})")
             return
-    sys.exit("update hint block (type 2) not found")
+    sys.exit("arm64 update hint block (type 2) not found")
+
+
+def no_update_patch_arm32(lib, data):
+    dis = subprocess.run([OBJDUMP, "-d", "--triple=thumbv7-linux-androideabi",
+                         "--disassemble-symbols=_ZN15CFDlgAutoUpdate10WindowProcEjjl", lib],
+                         capture_output=True, text=True, check=True).stdout
+    ins = [(int(a, 16), txt) for a, txt in re.findall(r"^\s*([0-9a-f]+):\s+(?:[0-9a-f]{2}\s*)+\s+(.*)$", dis, re.M)]
+    for i, (addr, txt) in enumerate(ins):
+        if "movw\tr1, #0xa33" in txt:
+            for j in range(i + 1, min(len(ins), i + 25)):
+                if "movs\tr1, #0x2" in ins[j][1]:
+                    start = ins[i - 1][0]
+                    target = ins[j][0]
+                    offset = target - (start + 8)
+                    imm = offset >> 1
+                    branch_inst = struct.pack("<2H", 0xf000, 0xb800 | imm)
+                    patch = b"\x4f\xf6\xff\x70" + branch_inst
+                    patch += b"\x00\xbf" * ((target - start - len(patch)) // 2)
+                    data[start:start + len(patch)] = patch
+                    print(f"no-update patch (arm32) at {start:#x} -> {target:#x}")
+                    return
+    sys.exit("arm32 update hint block (type 2) not found")
 
 
 def local_url(old):
@@ -165,8 +205,9 @@ def local_url(old):
             return new.ljust(len(old), b"\x00")
 
 
-def patch_lib(dec):
-    lib = os.path.join(dec, LIB)
+def patch_lib(dec, arch):
+    lib_rel = LIB_PATHS[arch]
+    lib = os.path.join(dec, lib_rel)
     data = bytearray(open(lib, "rb").read())
     at = data.find(OG_MODULUS)
     if at < 0:
@@ -185,34 +226,69 @@ def patch_lib(dec):
                 os.path.join(dec, "assets", "ConquerRes", SERVER_LIST + ".dat"))
     print(f"server list read from {SERVER_LIST}.dat (name at {at + 1:#x})")
     open(os.path.join(dec, "assets", "ConquerRes", "res.dat"), "w").write(RES_MARK)
-    no_update_patch(lib, data)
+    if arch == "arm64-v8a":
+        no_update_patch_arm64(lib, data)
+    elif arch == "armeabi-v7a":
+        no_update_patch_arm32(lib, data)
     open(lib, "wb").write(data)
 
 
 def main():
     ap = argparse.ArgumentParser(description="Build the unsigned mod base APK from an official client; "
                                              "build_apk.py then points it at a server and signs it.")
-    ap.add_argument("og_dir", help="official client folder: base.apk + split_config.*.apk + split_install_time*.apk")
+    ap.add_argument("og_dir", help="official client folder (or .xapk/.zip file): base.apk + split_config.*.apk + split_install_time*.apk")
     ap.add_argument("work", help="work folder; the result is <work>/base.apk")
     ap.add_argument("--skip-decode", action="store_true", help="reuse <work>/base_decoded")
     a = ap.parse_args()
+
+    if os.path.isfile(a.og_dir) and (a.og_dir.endswith(".xapk") or a.og_dir.endswith(".zip")):
+        extracted = os.path.join(a.work, "og_extracted")
+        if not os.path.isdir(extracted):
+            print(f"Extracting {a.og_dir} -> {extracted}")
+            with zipfile.ZipFile(a.og_dir) as z:
+                z.extractall(extracted)
+        a.og_dir = extracted
+
+    base_candidates = (glob.glob(os.path.join(a.og_dir, "base.apk")) or
+                       glob.glob(os.path.join(a.og_dir, "*CQ2ClientAndroid*.apk")) or
+                       glob.glob(os.path.join(a.og_dir, "*.apk")))
+    if not base_candidates:
+        sys.exit("base APK not found in " + a.og_dir)
+    base_apk = base_candidates[0]
+
+    arm64_splits = glob.glob(os.path.join(a.og_dir, "*arm64*.apk"))
+    arm32_splits = glob.glob(os.path.join(a.og_dir, "*armeabi*.apk")) or glob.glob(os.path.join(a.og_dir, "*v7a*.apk"))
+    if arm64_splits:
+        arch = "arm64-v8a"
+        split_lib_apk = arm64_splits[0]
+    elif arm32_splits:
+        arch = "armeabi-v7a"
+        split_lib_apk = arm32_splits[0]
+    else:
+        sys.exit("no architecture split found in " + a.og_dir)
+    print(f"Target architecture: {arch} from {split_lib_apk}")
+
     dec = os.path.join(a.work, "base_decoded")
     os.makedirs(a.work, exist_ok=True)
     if not a.skip_decode:
-        run("java", "-jar", APKTOOL, "d", "-f", os.path.join(a.og_dir, "base.apk"), "-o", dec)
-    unzip(glob.glob(os.path.join(a.og_dir, "split_config.arm64_v8a.apk"))[0], "lib/", dec)
-    for pack in glob.glob(os.path.join(a.og_dir, "split_install_time*.apk")):
+        run("java", "-jar", APKTOOL, "d", "-f", base_apk, "-o", dec)
+    unzip(split_lib_apk, "lib/", dec)
+    for pack in glob.glob(os.path.join(a.og_dir, "*install_time*.apk")):
         unzip(pack, "assets/", dec)
-    hdpi = os.path.join(a.work, "hdpi_decoded")
-    if not os.path.isdir(hdpi):
-        subprocess.run(["java", "-jar", APKTOOL, "d", "-f", "-s", os.path.join(a.og_dir, "split_config.hdpi.apk"), "-o", hdpi])
-    for d in glob.glob(os.path.join(hdpi, "res", "*")):
-        if os.path.basename(d) != "values":
-            shutil.copytree(d, os.path.join(dec, "res", os.path.basename(d)), dirs_exist_ok=True)
+    dpi_splits = (glob.glob(os.path.join(a.og_dir, "*hdpi*.apk")) or
+                  glob.glob(os.path.join(a.og_dir, "*mdpi*.apk")) or
+                  glob.glob(os.path.join(a.og_dir, "*dpi*.apk")))
+    if dpi_splits:
+        dpi_decoded = os.path.join(a.work, "dpi_decoded")
+        if not os.path.isdir(dpi_decoded):
+            subprocess.run(["java", "-jar", APKTOOL, "d", "-f", "-s", dpi_splits[0], "-o", dpi_decoded], check=True)
+        for d in glob.glob(os.path.join(dpi_decoded, "res", "*")):
+            if os.path.basename(d) != "values":
+                shutil.copytree(d, os.path.join(dec, "res", os.path.basename(d)), dirs_exist_ok=True)
     patch_smali(dec)
     patch_sdk_login(dec)
     patch_manifest(dec)
-    patch_lib(dec)
+    patch_lib(dec, arch)
     out = os.path.join(a.work, "base.apk")
     run("java", "-jar", APKTOOL, "b", dec, "-o", out)
     add_dex(out, login_dex(a.work))

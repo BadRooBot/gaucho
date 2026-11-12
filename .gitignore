@@ -10,3 +10,5 @@ data/heroes*.json
 data/accounts.json
 data/guilds.json
 tools/apktool.jar
+work_mod/*
+/work_mod

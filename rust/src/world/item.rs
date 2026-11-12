@@ -161,7 +161,7 @@ impl World {
         self.send(cid, 0x2799, &eq);
     }
 
-    fn send_taken(&self, cid: u64, it: &Item) {
+    pub(super) fn send_taken(&self, cid: u64, it: &Item) {
         if it.count == 0 {
             self.send(cid, 0x2799, &item_msg(it.id, 255, 3));
         } else {

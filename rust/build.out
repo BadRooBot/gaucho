@@ -1,0 +1,20 @@
+   Compiling gaucho-server v0.1.0 (E:\CODE\Reverse Engineer Anything\Gaucho\gaucho\rust)
+error: this file contains an unclosed delimiter
+   --> src\world.rs:443:3
+    |
+271 | impl World {
+    |            - unclosed delimiter
+...
+367 |     fn packet(&mut self, cid: u64, ty: u16, body: Vec<u8>) {
+    |                                                            - this delimiter might not be properly closed...
+...
+408 |             0x07e4 | 0x278a | 0x27d9 | 0x0833 | 0x0939 => {}
+    |                                                           -- block is empty, you might have not meant to close it
+...
+431 | }
+    | - ...as it matches this but it has different indentation
+...
+443 | }
+    |  ^
+
+error: could not compile `gaucho-server` (bin "gaucho-server") due to 1 previous error

@@ -38,9 +38,11 @@ impl World {
         let now = Instant::now();
         self.players.insert(cid, Player {
             tx, addr, h, key: String::new(), pending: None, dir: 0, alive: true, revive_at: None, entered: false,
-            ready: false, seen: HashSet::new(), last_attack: now, last_mbtick: now, quest_timer: None, cine: None, res: 0,
+            ready: false, seen: HashSet::new(), last_attack: now, last_mbtick: now, quest_timer: None,
+            forge_retry: None, cine: None, res: 0,
             cooldown: HashMap::new(), stamina: 0, pk_mode: 1, flash: None, pk_decay: now + PK_DECAY,
             friend_req: HashSet::new(), trade_req: HashSet::new(), trade: None,
+            last_npc: 0, dialog_menu: 0,
         });
     }
 
@@ -160,35 +162,45 @@ impl World {
     }
 
     pub(super) fn login(&mut self, cid: u64, key: String, mut h: Hero) {
-        let t = &self.d.template;
+        let (t_map, t_pos) = (self.d.template.map, self.d.template.pos);
         let c = self.classes.get(h.class);
-        if h.map != t.map || h.x == 0 {
-            (h.map, h.x, h.y) = (t.map, t.pos.0 as i32, t.pos.1 as i32);
+        if h.map != t_map || h.x == 0 {
+            (h.map, h.x, h.y) = (t_map, t_pos.0 as i32, t_pos.1 as i32);
         }
         if h.hp <= 0 {
             h.hp = h.max_hp(c);
         }
-        let ui = h.userinfo(&t.userinfo);
-        let setup: Vec<_> = data::retarget(&t.setup, (t.hero, t.name.as_slice()), (h.id, h.name.as_bytes()))
-            .into_iter().map(|(ty, b)| match ty {
-                0x27ed => (ty, ui.clone()),
-                0x27f0 if Msg::parse_lossy(&b).get(1) == 0 => (ty, clock()),
-                _ => (ty, b),
-            }).filter(|(ty, b)| *ty != 0x27c3 || !matches!(Msg::parse_lossy(b).get(2), 0x834 | 0x835)).collect();
-        let online = self.players.len();
         let p = self.players.get_mut(&cid).unwrap();
         h.ip = p.addr.ip().to_string();
         h.last_login = unix();
-        println!("[WORLD] {} id={} logged in from {} ({} online)", h.name, h.id, p.addr, online);
-        self.by_id.insert(h.id, cid);
         p.key = key;
         p.pending = None;
         p.h = h;
+        self.by_id.insert(self.players[&cid].h.id, cid);
+
+        let t = &self.d.template;
+        let cur_h = &self.players[&cid].h;
+        let ui = cur_h.userinfo(&t.userinfo);
+        // During setup handshake, frame 53 is a clean stub (Action 0, xuemai 0, user id, bGuide 0)
+        let lineage_setup_bytes = Pb::new().v(1, 0).v(2, 0).v(5, cur_h.id as u64).v(6, 0).out();
+        let setup: Vec<_> = data::retarget(&t.setup, (t.hero, t.name.as_slice()), (cur_h.id, cur_h.name.as_bytes()))
+            .into_iter().map(|(ty, b)| match ty {
+                0x27ed => (ty, ui.clone()),
+                0x27f0 if Msg::parse_lossy(&b).get(1) == 0 => (ty, clock()),
+                0x28a1 => (ty, lineage_setup_bytes.clone()),
+                _ => (ty, b),
+            }).filter(|(ty, b)| *ty != 0x27c3 || !matches!(Msg::parse_lossy(b).get(2), 0x834 | 0x835)).collect();
+        let online = self.players.len();
+        println!("[WORLD] {} id={} logged in from {} ({} online)", cur_h.name, cur_h.id, self.players[&cid].addr, online);
         for (ty, b) in &setup {
             self.send(cid, *ty, b);
         }
         self.send_skills(cid);
         self.send(cid, 0x27c3, &talk(0x835, "ANSWER_OK"));
+        // Flip CMobileSDKData::IsLoginServerOver while the loading dialog is
+        // still up, so its gated block can call SetInitStatus(true) — without
+        // that, ProcessFuncStatus early-returns and no func button ever unlocks.
+        self.login_server_over(cid);
     }
 
     pub(super) fn enter(&mut self, cid: u64) {
@@ -199,9 +211,35 @@ impl World {
         let t = &self.d.template;
         let p = &self.players[&cid];
         for (ty, b) in data::retarget(&t.enter, (t.hero, t.name.as_slice()), (p.h.id, p.h.name.as_bytes())) {
+            // Template frame 54 (action 471, N64Data=0) is sent as-is: official
+            // sends it BEFORE action 74, latching m_nFunctionFlag to 0.
+            // Template frame 55 (action 74) carries IdUser = 1002 (the map id).
+            // CMsgMBAction::Process @0xf6de24 does GetPlayer(IdUser, true); with a
+            // non-player id it bails to 0xf6dfd8 and the enter-map handler never
+            // runs. When it does run it posts PostCmd(0x480, 0x400) @0xf6df08,
+            // and CMyShellDlg::OnMyMessage16 case 0x480 calls
+            // SetLoadingProgress(0x400, 40) — raising s_nMaxPrgValue from 600 to
+            // 1024 so CFDlgLoading's gated block (>= 0x400) can call
+            // CNewFunctionOpenMgr::SetInitStatus(true) and unlock Forge.
+            if ty == 0x273e {
+                let mut m = Msg::parse_lossy(&b);
+                if m.get(12) == 74 {
+                    m.set(1, p.h.id as u64);
+                    if self.trace {
+                        println!("[ENTER {cid}] action 74 IdUser -> {}", p.h.id);
+                    }
+                    self.send(cid, ty, &m.encode());
+                    continue;
+                }
+            }
             self.send(cid, ty, &b);
         }
         self.players.get_mut(&cid).unwrap().entered = true;
+        // Hero is now spawned in CGamePlayerSet: send login-server-over so
+        // CFDlgLoading::DoStateChange() sees IsLoginServerOver() == true and calls
+        // CNewFunctionOpenMgr::SetInitStatus(true), and immediately set all func flags.
+        self.login_server_over(cid);
+        self.forge_open(cid);
     }
 
     pub(super) fn ready(&mut self, cid: u64) {
@@ -219,8 +257,33 @@ impl World {
         self.social_ready(cid);
         self.friends_online(cid, true);
         self.skills_ready(cid);
+        if self.players[&cid].h.reborn >= 1 {
+            self.lineage_init_for_reborn(cid);
+            self.send_lineage(cid);
+            self.send_lineage_refresh(cid);
+        }
         self.players.get_mut(&cid).unwrap().ready = true;
         self.refresh_view(cid);
+        // Hero is now spawned in CGamePlayerSet: send Action 74 so CMsgMBAction::Process
+        // finds GetPlayer(p.h.id, true) != NULL and executes PostCmd(0x480, 0x400) @0xf6df08,
+        // raising loading progress to 1024 (0x400) and triggering SetInitStatus(true)!
+        let p = &self.players[&cid];
+        let (id, x, y, map) = (p.h.id as u64, p.h.x as u64, p.h.y as u64, p.h.map as u64);
+        let now = ms();
+        let act74 = Pb::new()
+            .v(1, id).v(3, map).v(5, id).v(9, now).v(12, 74).v(13, 0)
+            .v(14, x).v(15, y).v(17, map)
+            .out();
+        self.send(cid, 0x273e, &act74);
+        self.login_server_over(cid);
+        self.forge_open(cid);
+        if self.players[&cid].h.reborn >= 1 || self.players[&cid].h.level >= 130 {
+            self.send_lineage_refresh(cid);
+        }
+        // Re-send the function-open flag a few times: the client only applies it
+        // once CNewFunctionOpenMgr::SetInitStatus(true) has run (loading screen),
+        // and ProcessFuncStatus can latch "closed" if it runs before our flag.
+        self.players.get_mut(&cid).unwrap().forge_retry = Some((Instant::now() + Duration::from_secs(5), 0));
         self.quest_login(cid);
     }
 
@@ -232,6 +295,7 @@ impl World {
             (1, h.max_hp(c) as u64), (0, h.hp.max(0) as u64), (3, h.max_mp(c) as u64), (2, h.mp.max(0) as u64),
             (12, h.level as u64), (15, st(0)), (16, st(1)), (14, st(2)), (13, st(3)), (10, h.add_points as u64),
             (11, h.look as u64), (26, h.hair as u64), (4, h.money), (29, h.emoney as u64), (5, h.exp), (6, h.pk as u64),
+            (22, h.reborn as u64), (7, h.class as u64),
         ]));
         self.send(cid, 0x283d, &h.attri_info(c));
     }
