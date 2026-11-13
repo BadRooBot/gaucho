@@ -12,3 +12,12 @@ data/guilds.json
 tools/apktool.jar
 work_mod/*
 /work_mod
+Gaucho_127.0.0.1.apk
+*.apk
+Gaucho.xapk
+Gaucho.apk
+tools/frida-server
+tools/frida-server-arm
+tools/frida-server-arm.xz
+tools/frida-server-x86_64.xz
+tools/libCQ2ClientEn.so

@@ -1,0 +1,41 @@
+import struct
+
+with open('tools/libCQ2ClientEn.so', 'rb') as f:
+    data = f.read()
+
+e_shoff = struct.unpack('<I', data[0x20:0x24])[0]
+e_shentsize = struct.unpack('<H', data[0x2e:0x30])[0]
+e_shnum = struct.unpack('<H', data[0x30:0x32])[0]
+e_shstrndx = struct.unpack('<H', data[0x32:0x34])[0]
+shstr_hdr = data[e_shoff + e_shstrndx*e_shentsize : e_shoff + (e_shstrndx+1)*e_shentsize]
+shstr_off = struct.unpack('<I', shstr_hdr[16:20])[0]
+
+sections = {}
+for i in range(e_shnum):
+    sh = data[e_shoff + i*e_shentsize : e_shoff + (i+1)*e_shentsize]
+    name_idx = struct.unpack('<I', sh[0:4])[0]
+    name = data[shstr_off + name_idx:].split(b'\0')[0].decode('latin-1')
+    sections[name] = sh
+
+sh_dynsym = sections['.dynsym']
+sh_dynstr = sections['.dynstr']
+dynsym_off = struct.unpack('<I', sh_dynsym[16:20])[0]
+dynsym_sz = struct.unpack('<I', sh_dynsym[20:24])[0]
+dynstr_off = struct.unpack('<I', sh_dynstr[16:20])[0]
+
+syms = []
+for i in range(dynsym_sz // 16):
+    sym = data[dynsym_off + i*16 : dynsym_off + (i+1)*16]
+    st_name = struct.unpack('<I', sym[0:4])[0]
+    st_val = struct.unpack('<I', sym[4:8])[0]
+    st_sz = struct.unpack('<I', sym[8:12])[0]
+    if 0x01600000 <= (st_val & ~1) <= 0x01610000:
+        name = data[dynstr_off + st_name:].split(b'\0')[0].decode('latin-1')
+        syms.append((st_val & ~1, st_sz, name))
+
+syms.sort()
+for val, sz, name in syms:
+    if val <= 0x0160cc1e <= val + sz:
+        print(f'MATCH: 0x{val:08x} ({sz:4d}): {name}')
+    elif abs(val - 0x0160cc1e) < 0x2000:
+        print(f'NEAR: 0x{val:08x} ({sz:4d}): {name}')

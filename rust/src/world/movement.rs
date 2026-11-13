@@ -10,6 +10,7 @@ impl World {
     pub(super) fn mb_action(&mut self, cid: u64, body: &[u8]) {
         let m = Msg::parse_lossy(body);
         let action = m.get(12);
+        println!("[RECV ACTION {cid}] action={action}");
         let p = &self.players[&cid];
         let id = if m.get(1) != 0 { m.get(1) } else { p.h.id as u64 };
         let (x, y, map) = (p.h.x as u64, p.h.y as u64, p.h.map as u64);
