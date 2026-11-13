@@ -3,37 +3,34 @@ import struct
 with open('tools/libCQ2ClientEn.so', 'rb') as f:
     data = f.read()
 
-target = 0x00f6f450
-print(f"Scanning for branches to 0x{target:08x}...")
-# Check B.W, BEQ.W, etc.
-for i in range(0x00f6dd90, 0x00f6ffff, 2):
-    w1, w2 = struct.unpack('<HH', data[i:i+4])
-    # B.W: 1111 0S imm10 10J1 1J2 imm11
-    if (w1 & 0xf800) == 0xf000 and (w2 & 0xd000) == 0x9000:
-        # conditional branch B<cond>.W
-        cond = (w1 >> 6) & 0xf
-        s = (w1 >> 10) & 1
-        j1 = (w2 >> 13) & 1
-        j2 = (w2 >> 11) & 1
-        imm6 = w1 & 0x3f
-        imm11 = w2 & 0x7ff
-        offset = (s << 20) | (j2 << 19) | (j1 << 18) | (imm6 << 12) | (imm11 << 1)
-        if s: offset -= (1 << 21)
-        dest = (i + 4 + offset) & 0xffffffff
-        if abs(dest - target) < 16:
-            print(f'B<cond>.W at 0x{i:08x} -> 0x{dest:08x}')
-    if (w1 & 0xf800) == 0xf000 and (w2 & 0xd000) == 0xb000:
-        # unconditional branch B.W
-        s = (w1 >> 10) & 1
-        j1 = (w2 >> 13) & 1
-        j2 = (w2 >> 11) & 1
-        imm10 = w1 & 0x3ff
-        imm11 = w2 & 0x7ff
-        i1 = ~(j1 ^ s) & 1
-        i2 = ~(j2 ^ s) & 1
-        offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1)
-        if s: offset -= (1 << 25)
-        dest = (i + 4 + offset) & 0xffffffff
-        if abs(dest - target) < 16:
-            print(f'B.W at 0x{i:08x} -> 0x{dest:08x}')
+target = 0x00d56190
+# In Thumb-2:
+# 32-bit branch:
+# hw1: 1111 0 S imm10
+# hw2 for blx: 11 1 J1 0 J2 imm10H 0
+# let's decode target for every 2-byte aligned offset in text section (0x00d00000..0x01800000)
+hits = []
+for pc in range(0x00e00000, 0x01800000, 2):
+    hw1 = data[pc] | (data[pc+1] << 8)
+    if (hw1 & 0xf800) == 0xf000:
+        hw2 = data[pc+2] | (data[pc+3] << 8)
+        # blx or bl
+        if (hw2 & 0xd000) == 0xc000: # blx: bit 12 is 0, bit 14 is 1, bit 15 is 1
+            s = (hw1 >> 10) & 1
+            imm10 = hw1 & 0x3ff
+            j1 = (hw2 >> 13) & 1
+            j2 = (hw2 >> 11) & 1
+            imm10h = (hw2 >> 1) & 0x7ff if (hw2 & 0x1000) else (hw2 & 0x7ff) # for blx bit 0 is 0
+            i1 = ~(j1 ^ s) & 1
+            i2 = ~(j2 ^ s) & 1
+            imm32 = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm10h << 1)
+            if s:
+                imm32 -= (1 << 25)
+            # For BLX to ARM: PC is (pc + 4) & ~3
+            dest = ((pc + 4) & ~3) + imm32 if not (hw2 & 0x1000) else (pc + 4) + imm32
+            if dest == target:
+                hits.append(pc)
 
+print(f"Found {len(hits)} calls to 0x{target:08x}:")
+for h in hits:
+    print(f"  0x{h:08x}")

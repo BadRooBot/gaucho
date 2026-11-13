@@ -1,13 +1,20 @@
-with open('work_mod/base_decoded/lib/armeabi-v7a/libCQ2ClientEn.so', 'rb') as f:
+import capstone, struct
+
+with open('tools/libCQ2ClientEn.so', 'rb') as f:
     data = f.read()
 
-import struct
+# At 0xf6de2e: addw r1, pc, #0x10 -> pc is 0xf6de2e + 4 = 0xf6de32 -> +0x10 = 0xf6de42? Or in thumb: pc is (addr + 4) & ~1 = 0xf6de32.
+# Let's check tbh base:
+# In Thumb-2:
+# 0xf6de2e: addw r1, pc, #0x10
+# pc for 0xf6de2e is 0xf6de2e + 4 = 0xf6de32.
+# r1 = 0xf6de32 + 0x10 = 0xf6de42. Wait, 0xf6de2e is 4-byte instruction:
+# Let's inspect raw bytes from 0xf6de20 to 0xf6df20.
+chunk = data[0xf6de20:0xf6df20]
+print("raw bytes around jump table:")
+print(chunk[:40].hex())
 
-tbh_pc = 0x011f6f44
-tbh_table = tbh_pc
-print("Jump table from 0x11f6f44:")
-for i in range(24):
-    half = struct.unpack('<H', data[tbh_table + i*2 : tbh_table + (i+1)*2])[0]
-    target = tbh_pc + half * 2
-    print(f"ctrl {1000+i} (index {i}): half=0x{half:04x} -> target=0x{target:08x}")
-
+# Let's disassemble from 0xf6deec to 0xf6dfd0
+md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
+for insn in md.disasm(data[0xf6def0:0xf6dfd0], 0xf6def0):
+    print(f"0x{insn.address:x}: {insn.mnemonic} {insn.op_str}")

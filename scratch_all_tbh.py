@@ -11,3 +11,4 @@ for r2 in range(92):
     target = tbh_pc + 2 * offset
     action = 74 + r2
     print(f'Action {action:3d} (0x{action:02x}, r2={r2:2d}): offset=0x{offset:04x} -> target=0x{target:08x}')
+

@@ -34,3 +34,4 @@ for sec_name in ['.rel.dyn', '.rel.plt']:
         offset, info = struct.unpack('<II', data[r_off + i*8 : r_off + (i+1)*8])
         if (info >> 8) == sym_idx:
             print(f'{sec_name} ref at offset 0x{offset:08x}')
+

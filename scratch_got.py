@@ -52,3 +52,4 @@ for i in range(r_sz // 8):
         name = data[str_off + st_name:].split(b'\0')[0].decode('latin-1')
         print(f'Symbol: {name}')
         break
+

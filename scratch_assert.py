@@ -15,3 +15,4 @@ for i in range(0, len(data)-4, 4):
         print(f'PC-rel (no+4) at 0x{i:08x}')
     elif val == 0x253079a:
         print(f'Absolute reference at 0x{i:08x}')
+

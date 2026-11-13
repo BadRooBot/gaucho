@@ -1,24 +1,22 @@
-import struct
+import capstone
 
 with open('tools/libCQ2ClientEn.so', 'rb') as f:
     data = f.read()
 
-target = 0x0125ded4
-print(f"Scanning for callers of SetLoadingProgress (0x{target:08x})...")
+# In thumb: blx #0xd56190 or bl #0x0125ded4
+# Let's search all bl/blx calls that target 0xd56190 or 0x0125ded4
+md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
 
-for i in range(0, len(data)-4, 2):
-    w1, w2 = struct.unpack('<HH', data[i:i+4])
-    if (w1 & 0xf800) == 0xf000 and (w2 & 0xd000) == 0xd000:
-        s = (w1 >> 10) & 1
-        j1 = (w2 >> 13) & 1
-        j2 = (w2 >> 11) & 1
-        imm10 = w1 & 0x3ff
-        imm11 = w2 & 0x7ff
-        i1 = ~(j1 ^ s) & 1
-        i2 = ~(j2 ^ s) & 1
-        offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1)
-        if s: offset -= (1 << 25)
-        dest = (i + 4 + offset) & 0xffffffff
-        if dest == target or dest == target + 1:
-            print(f'Caller at 0x{i:08x}')
+chunk = data[0x00f00000:0x01800000]
+start = 0x00f00000
 
+for insn in md.disasm(chunk, start):
+    if insn.mnemonic in ('bl', 'blx'):
+        if 'd56190' in insn.op_str or '125ded4' in insn.op_str or '125ded5' in insn.op_str:
+            # print preceding 4 instructions
+            prev_chunk = data[insn.address - 16 : insn.address]
+            prev_insns = list(md.disasm(prev_chunk, insn.address - 16))
+            print(f"Call at 0x{insn.address:08x}:")
+            for pi in prev_insns:
+                print(f"  0x{pi.address:08x}: {pi.mnemonic} {pi.op_str}")
+            print(f"  0x{insn.address:08x}: {insn.mnemonic} {insn.op_str}")

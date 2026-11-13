@@ -13,3 +13,4 @@ while True:
     if any(k in name for k in ['GetPlayer', 'Create', 'Add', 'SetHero', 'InitHero']):
         print(name)
     idx = end + 1
+

@@ -9,3 +9,4 @@ for i in range(0, len(data)-4, 4):
     w = struct.unpack('<I', data[i:i+4])[0]
     if w in (target, target + 1):
         print(f'Pointer at 0x{i:08x}: 0x{w:08x}')
+

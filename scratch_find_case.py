@@ -49,3 +49,4 @@ for i in range(0x0160b000, 0x0160cbf0, 2):
     w = struct.unpack('<H', data[i:i+2])[0]
     if (w & 0xfff0) == 0xe8d0: # TBB or TBH
         print(f'TBB/TBH at 0x{i:08x}')
+

@@ -36,3 +36,4 @@ for i in range(dynsym_sz // 16):
 syms.sort()
 for val, sz, name in syms:
     print(f'0x{val:08x} ({sz:4d}): {name}')
+

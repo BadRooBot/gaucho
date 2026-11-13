@@ -44,3 +44,4 @@ try:
     print('utf-32:', msg_bytes.decode('utf-32', errors='ignore'))
 except Exception as e:
     print(e)
+

@@ -35,3 +35,4 @@ for i in range(0, len(data)-4, 4):
         dest = (i + 8 + (imm24 << 2)) & 0xffffffff
         if dest == target:
             print(f'ARM call at 0x{i:08x}')
+

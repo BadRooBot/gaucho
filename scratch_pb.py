@@ -12,3 +12,4 @@ while True:
     end = data.find(b'\0', idx)
     print(data[start:end].decode('latin-1', errors='ignore'))
     idx = end + 1
+

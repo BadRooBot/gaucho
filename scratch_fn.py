@@ -10,3 +10,4 @@ for addr in range(0x0160cbb0, 0x0160c000, -2):
     if b1 == 0xb5: # PUSH {..., LR}
         print(f'Function starts at 0x{addr:08x}')
         break
+

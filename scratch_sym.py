@@ -26,3 +26,4 @@ entry = data[0x00131930 : 0x00131940]
 st_name, st_value, st_size = struct.unpack('<III', entry[:12])
 name = data[dynstr_off + st_name:].split(b'\0')[0].decode('latin-1')
 print(f'Symbol at 0x00131930: name="{name}" st_value=0x{st_value:08x} st_size={st_size}')
+

@@ -1,24 +1,29 @@
-import struct
+import capstone, struct
 
 with open('tools/libCQ2ClientEn.so', 'rb') as f:
     data = f.read()
 
-target = 0x01107e72
-for i in range(0, len(data)-4, 2):
-    w1, w2 = struct.unpack('<HH', data[i:i+4])
-    if (w1 & 0xf800) == 0xf000 and (w2 & 0xd000) == 0xd000:
-        s = (w1 >> 10) & 1
-        j1 = (w2 >> 13) & 1
-        j2 = (w2 >> 11) & 1
-        imm10 = w1 & 0x3ff
-        imm11 = w2 & 0x7ff
-        i1 = ~(j1 ^ s) & 1
-        i2 = ~(j2 ^ s) & 1
-        offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1)
-        if s:
-            offset -= (1 << 25)
-        pc = i + 4
-        dest = (pc + offset) & 0xffffffff
-        if dest == target or dest == target + 1:
-            print(f'BL call at 0x{i:08x} -> 0x{dest:08x}')
+# Let's search who branches to 0x00f6df08 (or nearby, like 0x00f6df00..0x00f6df10)
+# or where 0x00f6df08 is in jump tables.
+target_addr = 0x00f6df08
 
+print("Scanning for branches to 0x00f6df08...")
+md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
+
+# CMsgMBAction::Process is around 0x00f6d000 to 0x00f70000
+chunk = data[0x00f6c000:0x00f72000]
+start = 0x00f6c000
+
+for insn in md.disasm(chunk, start):
+    if insn.mnemonic.startswith('b') or insn.mnemonic.startswith('cb'):
+        # check op_str
+        if f"0x{target_addr:x}" in insn.op_str:
+            print(f"Branch to target: 0x{insn.address:x}: {insn.mnemonic} {insn.op_str}")
+        elif "0xf6df" in insn.op_str:
+            print(f"Branch near target: 0x{insn.address:x}: {insn.mnemonic} {insn.op_str}")
+
+# Check all tbh / tbb in the region
+print("\nChecking jump tables...")
+for insn in md.disasm(chunk, start):
+    if insn.mnemonic in ('tbh', 'tbb'):
+        print(f"Table at 0x{insn.address:x}: {insn.mnemonic} {insn.op_str}")

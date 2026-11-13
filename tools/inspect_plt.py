@@ -1,12 +1,17 @@
-import capstone
-
 with open('tools/libCQ2ClientEn.so', 'rb') as f:
     data = f.read()
 
-cs = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_ARM)
-for addr in [0xce7670, 0xd4f1c4, 0xd4f1dc]:
-    print(f'=== 0x{addr:08x} ===')
-    code = data[addr:addr+16]
-    for ins in cs.disasm(code, addr):
-        print(f'0x{ins.address:08x}:  {ins.mnemonic:<8} {ins.op_str}')
+# Let's find PLT or relocation for 0xcea040
+import struct
 
+plt_entry = 0xcea040
+# In ARM Thumb PLT:
+# add ip, pc, ...
+# ldr pc, [ip, ...]
+print(f"Bytes at 0x{plt_entry:x}: {data[plt_entry:plt_entry+16].hex()}")
+
+# Let's check decode_reloc.py or scan_plt.py
+import subprocess
+p = subprocess.run(['python', 'tools/decode_reloc.py', hex(plt_entry)], capture_output=True, text=True)
+print(p.stdout)
+print(p.stderr)

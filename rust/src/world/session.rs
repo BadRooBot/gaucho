@@ -211,10 +211,6 @@ impl World {
     }
 
     pub(super) fn enter(&mut self, cid: u64) {
-        let p = &self.players[&cid];
-        let (id, map, x, y) = (p.h.id as u64, p.h.map as u64, p.h.x as u64, p.h.y as u64);
-        self.send(cid, 0x273e, &Pb::new().v(1, id).v(3, map).v(5, id).v(9, ms()).v(12, 86).v(13, 0)
-            .v(14, x).v(15, y).v(17, map).out());
         let t = &self.d.template;
         let p = &self.players[&cid];
         for (ty, b) in data::retarget(&t.enter, (t.hero, t.name.as_slice()), (p.h.id, p.h.name.as_bytes())) {

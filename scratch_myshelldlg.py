@@ -16,3 +16,4 @@ while True:
 
 for m in sorted(set(methods)):
     print(m)
+

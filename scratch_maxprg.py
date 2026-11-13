@@ -18,3 +18,4 @@ for i in range(0, len(data)-4, 4):
         print(f'Relative ref (val + addr = target) in pool at 0x{i:08x}')
     elif (i + 4 + val) & 0xffffffff == target:
         print(f'Thumb PC-rel ref (val + addr + 4 = target) in pool at 0x{i:08x}')
+

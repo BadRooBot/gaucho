@@ -48,3 +48,4 @@ for addr in range(plt_off + 20, plt_off + plt_sz, 12):
         calc = (addr + 8 + val0 + val1 + imm2) & 0xffffffff
         if calc == target:
             print(f'PLT stub for ProcessLoginStatus at 0x{addr:08x}')
+

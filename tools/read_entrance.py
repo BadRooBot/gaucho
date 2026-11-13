@@ -31,3 +31,4 @@ if v_finish > v_start:
     print(f"elements bytes: {v_finish - v_start}")
     raw_vec = read_mem(pid, v_start, v_finish - v_start)
     print("vector raw hex:", raw_vec.hex())
+

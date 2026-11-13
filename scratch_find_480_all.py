@@ -25,3 +25,4 @@ for rx in range(13):
         if idx == -1: break
         print(f'ARM movw r{rx}, #0x480 at 0x{idx:08x}')
         idx += 4
+

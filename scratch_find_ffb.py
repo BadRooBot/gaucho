@@ -33,3 +33,4 @@ for i in range(dynsym_sz // 16):
         st_name = struct.unpack('<I', sym[0:4])[0]
         name = data[dynstr_off + st_name:].split(b'\0')[0].decode('latin-1')
         print(f'Function at 0x{val:08x} (sz {st_sz}): {name}')
+

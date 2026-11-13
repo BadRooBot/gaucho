@@ -33,3 +33,4 @@ for i in range(dynsym_sz // 16):
         st_val = struct.unpack('<I', sym[4:8])[0]
         st_sz = struct.unpack('<I', sym[8:12])[0]
         print(f'_ZN11CMyShellDlg13ProcessNormalEv at 0x{st_val:08x} (sz {st_sz})')
+

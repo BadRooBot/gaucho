@@ -1,13 +1,10 @@
-import struct
-
 with open('tools/libCQ2ClientEn.so', 'rb') as f:
     data = f.read()
 
-base_tbl = 0x00f6de42
-for i in range(0x5c):
-    action = 0x4a + i
-    h = struct.unpack('<H', data[base_tbl + i*2 : base_tbl + (i+1)*2])[0]
-    target = base_tbl + (h * 2)
-    if 0x00f6df00 <= target <= 0x00f6df10:
-        print(f"Action {action} (0x{action:02x}) -> target=0x{target:08x}")
-
+raw = data[0xf6def0:0xf6df20]
+print("Hex 0xf6def0..0xf6df20:")
+print(raw.hex())
+# Print each halfword
+for o in range(0xf6def0, 0xf6df20, 2):
+    hw = data[o] | (data[o+1] << 8)
+    print(f"0x{o:06x}: 0x{hw:04x}")

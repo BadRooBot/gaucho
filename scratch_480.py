@@ -17,3 +17,4 @@ for rd in range(13):
         if idx == -1: break
         print(f'movw r{rd}, #0x480 at 0x{idx:08x}')
         idx += 2
+

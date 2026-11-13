@@ -16,3 +16,4 @@ with open('tools/captures/report_last.jsonl', 'r', encoding='utf-8') as f:
             count += 1
             if count >= 40:
                 break
+
